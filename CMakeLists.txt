@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.4.0)
-project(Lumen VERSION 0.1.0)
+project(Lumen-custom VERSION 0.1.0)
 
 include(CTest)
 enable_testing()
@@ -11,6 +11,12 @@ endif()
 
 find_package(Vulkan REQUIRED)
 find_package(Threads REQUIRED)
+
+if(DEFINED ENV{VULKAN_SDK})
+    set(Vulkan_INCLUDE_DIR "$ENV{VULKAN_SDK}/Include")
+endif()
+
+message(STATUS "Vulkan Include Dirs: ${Vulkan_INCLUDE_DIR}")
 
 set(src_files)
 add_subdirectory(src)
@@ -51,33 +57,42 @@ source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/libs PREFIX Libs FILES ${LIB_SRC})
 
 add_compile_definitions(TINYEXR_USE_MINIZ)  # enables usage of miniz for opening exr images
 add_compile_definitions(USE_SHADERC)        # enables shader compilation via shaderc
-add_executable(Lumen ${src_files} ${shaders_src})
+add_executable(Lumen-custom ${src_files} ${shaders_src} "scenes/sphere.h")
 
 # Add precompiled headers
-target_precompile_headers(Lumen PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CMAKE_CURRENT_SOURCE_DIR}/src/LumenPCH.h>")
+target_precompile_headers(Lumen-custom PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CMAKE_CURRENT_SOURCE_DIR}/src/LumenPCH.h>")
 set_source_files_properties(${LIB_SRC} PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
 
-target_include_directories(Lumen PRIVATE ${Vulkan_INCLUDE_DIR};${structures_INCLUDE_DIR})
+target_include_directories(Lumen-custom PRIVATE ${Vulkan_INCLUDE_DIR};${structures_INCLUDE_DIR})
 if(WIN32)
     message("-- Adding vulkan library lib to search paths for the linker to find spirv libraries")
-    get_filename_component(vulkan_lib_folder ${Vulkan_LIBRARIES} DIRECTORY)
-    target_link_directories(Lumen PRIVATE ${vulkan_lib_folder})
-    target_link_libraries(Lumen PRIVATE Vulkan::Vulkan glfw volk shaderc_shared glm GPUOpen::VulkanMemoryAllocator
+    set(vulkan_lib_folder "")
+
+    if(DEFINED ENV{VULKAN_SDK})
+        set(vulkan_lib_folder "$ENV{VULKAN_SDK}/Lib")
+    endif()
+
+    if(vulkan_lib_folder)
+        message(STATUS "Vulkan Lib Folder: ${vulkan_lib_folder}")
+        target_link_directories(Lumen-custom PRIVATE ${vulkan_lib_folder})
+    endif()
+    
+    target_link_libraries(Lumen-custom PRIVATE Vulkan::Vulkan glfw volk shaderc_shared glm GPUOpen::VulkanMemoryAllocator
     $<$<CONFIG:Debug>:spirv-cross-cored> $<$<NOT:$<CONFIG:Debug>>:spirv-cross-core>
     $<$<CONFIG:Debug>:spirv-cross-glsld> $<$<NOT:$<CONFIG:Debug>>:spirv-cross-glsl>)
-    target_compile_definitions(Lumen PRIVATE _CRT_SECURE_NO_WARNINGS)
+    target_compile_definitions(Lumen-custom PRIVATE _CRT_SECURE_NO_WARNINGS)
 else()
-    target_link_libraries(Lumen PRIVATE Vulkan::Vulkan glfw volk shaderc_shared spirv-cross-core spirv-cross-glsl glm GPUOpen::VulkanMemoryAllocator)
+    target_link_libraries(Lumen-custom PRIVATE Vulkan::Vulkan glfw volk shaderc_shared spirv-cross-core spirv-cross-glsl glm GPUOpen::VulkanMemoryAllocator)
 endif()
 
 if(MSVC)
-	target_compile_options(Lumen PRIVATE "/MP")
-	set_target_properties(Lumen PROPERTIES
+	target_compile_options(Lumen-custom PRIVATE "/MP")
+	set_target_properties(Lumen-custom PROPERTIES
     				      VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
-    set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT Lumen)
+    set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT Lumen-custom)
 endif()
 
-target_compile_features(Lumen PRIVATE cxx_std_20)
+target_compile_features(Lumen-custom PRIVATE cxx_std_20)
 
 set(CPACK_PROJECT_NAME ${PROJECT_NAME})
 set(CPACK_PROJECT_VERSION ${PROJECT_VERSION})
