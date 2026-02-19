@@ -57,7 +57,7 @@ source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/libs PREFIX Libs FILES ${LIB_SRC})
 
 add_compile_definitions(TINYEXR_USE_MINIZ)  # enables usage of miniz for opening exr images
 add_compile_definitions(USE_SHADERC)        # enables shader compilation via shaderc
-add_executable(Lumen-custom ${src_files} ${shaders_src} "scenes/sphere.h")
+add_executable(Lumen-custom ${src_files} ${shaders_src})
 
 # Add precompiled headers
 target_precompile_headers(Lumen-custom PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CMAKE_CURRENT_SOURCE_DIR}/src/LumenPCH.h>")
