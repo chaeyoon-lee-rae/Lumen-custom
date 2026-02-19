@@ -11,7 +11,6 @@
 
 namespace vk {
 
-
 struct SwapChainSupportDetails {
 	VkSurfaceCapabilitiesKHR capabilities = {};
 	std::vector<VkSurfaceFormatKHR> formats;
@@ -263,11 +262,15 @@ static void pick_physical_device() {
 		return indices.is_complete() && extensions_supported && swapchain_adequate;
 	};
 	for (const auto& device : devices) {
+		VkPhysicalDeviceProperties props;
+		vkGetPhysicalDeviceProperties(device, &props);
+		LUMEN_TRACE("Found GPU: {0}", props.deviceName);
 		if (is_suitable(device)) {
 			context().physical_device = device;
 			vkGetPhysicalDeviceFeatures(context().physical_device, &context().supported_features);
 			vkGetPhysicalDeviceProperties(context().physical_device, &context().device_properties);
 			vkGetPhysicalDeviceMemoryProperties(context().physical_device, &context().memory_properties);
+			LUMEN_TRACE("Selected GPU: {0}", context().device_properties.deviceName);
 			break;
 		}
 	}
@@ -301,8 +304,16 @@ static void create_logical_device() {
 		queue_CIs.push_back(queue_CI);
 	}
 	// TODO: Pass these externally
-	VkPhysicalDeviceFeatures2 device_features2{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2};
+	// Query supported features to ensure we don't request something unsupported
+	VkPhysicalDeviceShaderAtomicFloatFeaturesEXT supported_atomic_fts{
+		VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_ATOMIC_FLOAT_FEATURES_EXT};
+	VkPhysicalDeviceFeatures2 supported_features2{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2};
+	supported_features2.pNext = &supported_atomic_fts;
+	vkGetPhysicalDeviceFeatures2(context().physical_device, &supported_features2);
+
 	VkPhysicalDeviceVulkan12Features features12 = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES};
+	VkPhysicalDeviceVulkan13Features features13 = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES};
+
 	VkPhysicalDeviceRayTracingPipelineFeaturesKHR rt_fts{
 		VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR};
 	VkPhysicalDeviceAccelerationStructureFeaturesKHR accel_fts{
@@ -310,51 +321,42 @@ static void create_logical_device() {
 	VkPhysicalDeviceShaderAtomicFloatFeaturesEXT atomic_fts{
 		VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_ATOMIC_FLOAT_FEATURES_EXT};
 
-	VkPhysicalDeviceVulkan13Features features13 = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES};
-	features13.dynamicRendering = true;
-	features13.synchronization2 = true;
-	features13.maintenance4 = true;
+	// Only enable atomic float features if the hardware supports them
+	atomic_fts.shaderBufferFloat32AtomicAdd = supported_atomic_fts.shaderBufferFloat32AtomicAdd;
+	atomic_fts.shaderBufferFloat32Atomics = supported_atomic_fts.shaderBufferFloat32Atomics;
+	atomic_fts.shaderSharedFloat32AtomicAdd = supported_atomic_fts.shaderSharedFloat32AtomicAdd;
+	atomic_fts.shaderSharedFloat32Atomics = supported_atomic_fts.shaderSharedFloat32Atomics;
 
-	VkPhysicalDeviceDynamicRenderingFeaturesKHR dynamic_rendering_feature = {
-		VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES_KHR};
-	VkPhysicalDeviceSynchronization2FeaturesKHR syncronization2_features = {
-		VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES_KHR};
-	VkPhysicalDeviceMaintenance4FeaturesKHR maintenance4_fts = {
-		VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_4_FEATURES_KHR};
+	// LUMEN_TRACE("Atomic Float Support:");
+	// LUMEN_TRACE("  shaderBufferFloat32AtomicAdd: {0}", (bool)atomic_fts.shaderBufferFloat32AtomicAdd);
+	// LUMEN_TRACE("  shaderBufferFloat32Atomics: {0}", (bool)atomic_fts.shaderBufferFloat32Atomics);
+	// LUMEN_TRACE("  shaderSharedFloat32AtomicAdd: {0}", (bool)atomic_fts.shaderSharedFloat32AtomicAdd);
+	// LUMEN_TRACE("  shaderSharedFloat32Atomics: {0}", (bool)atomic_fts.shaderSharedFloat32Atomics);
 
-	atomic_fts.shaderBufferFloat32AtomicAdd = true;
-	atomic_fts.shaderBufferFloat32Atomics = true;
-	atomic_fts.shaderSharedFloat32AtomicAdd = true;
-	atomic_fts.shaderSharedFloat32Atomics = true;
 	atomic_fts.pNext = nullptr;
 	accel_fts.accelerationStructure = true;
 	accel_fts.pNext = &atomic_fts;
 	rt_fts.rayTracingPipeline = true;
 	rt_fts.pNext = &accel_fts;
+
 	features12.bufferDeviceAddress = true;
 	features12.runtimeDescriptorArray = true;
 	features12.shaderSampledImageArrayNonUniformIndexing = true;
 	features12.scalarBlockLayout = true;
 	features12.hostQueryReset = true;
-	if (1) {
-		dynamic_rendering_feature.dynamicRendering = true;
-		syncronization2_features.synchronization2 = true;
-		maintenance4_fts.maintenance4 = true;
-		features12.pNext = &maintenance4_fts;
-		maintenance4_fts.pNext = &syncronization2_features;
-		syncronization2_features.pNext = &dynamic_rendering_feature;
-		dynamic_rendering_feature.pNext = &rt_fts;
-	} else {
-		features12.pNext = &features13;
-		features13.pNext = &rt_fts;
-	}
 
+	features13.dynamicRendering = true;
+	features13.synchronization2 = true;
+	features13.maintenance4 = true;
+
+	features12.pNext = &features13;
+	features13.pNext = &rt_fts;
+
+	VkPhysicalDeviceFeatures2 device_features2{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2};
 	device_features2.features.samplerAnisotropy = true;
 	device_features2.features.shaderInt64 = true;
-	//
 	device_features2.features.fragmentStoresAndAtomics = true;
 	device_features2.features.vertexPipelineStoresAndAtomics = true;
-	//
 
 	device_features2.pNext = &features12;
 
