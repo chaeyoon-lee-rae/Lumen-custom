@@ -12,6 +12,7 @@
 #include "ReSTIRGI.h"
 #include "ReSTIRPT.h"
 #include "DDGI.h"
+#include "ReSTIRGISphere.h"
 #include "PostFX.h"
 #include "Framework/Window.h"
 

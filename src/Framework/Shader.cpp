@@ -464,7 +464,7 @@ static void parse_shader(Shader& shader, const uint32_t* code, size_t code_size,
 static std::unordered_map<std::string, shaderc_shader_kind> mstages = {
 	{"vert", shaderc_vertex_shader}, {"frag", shaderc_fragment_shader}, {"comp", shaderc_compute_shader},
 	{"rgen", shaderc_raygen_shader}, {"rahit", shaderc_anyhit_shader},	{"rchit", shaderc_closesthit_shader},
-	{"rmiss", shaderc_miss_shader},
+	{"rmiss", shaderc_miss_shader},  {"rint", shaderc_intersection_shader},
 };
 
 static std::vector<uint32_t> compile_file(const std::string& source_name, shaderc_shader_kind kind,

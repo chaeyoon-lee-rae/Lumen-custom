@@ -36,6 +36,7 @@
 #define LIGHT_SPOT 1
 #define LIGHT_AREA 2
 #define LIGHT_DIRECTIONAL 3
+#define LIGHT_SPHERE 4
 
 #ifdef __cplusplus
 #include <glm/glm.hpp>
@@ -197,6 +198,19 @@ struct Vertex {
 	vec2 uv0;
 };
 
+struct SpherePrimitive {
+	vec3 center;
+	float radius;
+};
+
+// Hit attributes written by sphere.rint and read by sphere.rchit.
+// Passes the surface normal and material index across the rint -> rchit boundary
+// so rchit does not need to re-read the sphere buffer.
+struct SphereHitAttribs {
+	vec3 normal;
+	uint materialIndex;
+};
+
 struct Light {
 	mat4 world_matrix;
 	vec3 pos;
@@ -304,6 +318,8 @@ struct Material {
 	uint64_t light_state_addr;
 	uint64_t angle_struct_addr;
 	uint64_t avg_addr;
+	// ReSTIR GI Sphere
+	uint64_t sphere_prims_addr;
 	// DDGI
 	uint64_t probe_radiance_addr;
 	uint64_t probe_dir_depth_addr;

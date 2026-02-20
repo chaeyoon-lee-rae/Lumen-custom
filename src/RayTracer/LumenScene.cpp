@@ -724,6 +724,8 @@ void LumenScene::create_scene_config(const std::string& integrator_name) {
 		config = std::make_unique<ReSTIRPTConfig>();
 	} else if (name == "ddgi") {
 		config = std::make_unique<DDGIConfig>();
+	} else if (name == "restirgisphere") {
+		config = std::make_unique<ReSTIRGISphereConfig>();
 	} else {
 		config = std::make_unique<PathConfig>();
 	}

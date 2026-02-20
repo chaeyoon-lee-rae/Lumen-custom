@@ -1,0 +1,12 @@
+# sphere_stub.obj
+# Minimal placeholder triangle used only to satisfy load_lumen_scene's OBJ parser.
+# ReSTIRGISphere::init() replaces all GPU buffers with procedurally generated data.
+g stub
+v 0 0 0
+v 1 0 0
+v 0 0 1
+vn 0 1 0
+vt 0 0
+vt 1 0
+vt 0 1
+f 1/1/1 2/2/1 3/3/1

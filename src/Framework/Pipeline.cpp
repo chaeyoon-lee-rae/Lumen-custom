@@ -219,6 +219,7 @@ void Pipeline::create_rt_pipeline(const RTPassSettings& settings, const std::vec
 
 		stage.module = shader.create_vk_shader_module(vk::context().device);
 		stage.stage = shader.stage;
+		bool push_group = true;
 		switch (shader.stage) {
 			case VK_SHADER_STAGE_RAYGEN_BIT_KHR:
 			case VK_SHADER_STAGE_MISS_BIT_KHR: {
@@ -236,6 +237,16 @@ void Pipeline::create_rt_pipeline(const RTPassSettings& settings, const std::vec
 				group.anyHitShader = stage_idx;
 				break;
 			}
+			case VK_SHADER_STAGE_INTERSECTION_BIT_KHR: {
+				// Merge with the preceding closest-hit group to form a procedural hit group.
+				// The intersection shader shares its group with the rchit that immediately precedes it.
+				LUMEN_ASSERT(!groups.empty(), "Intersection shader must immediately follow a closest-hit shader");
+				auto& prev_group = groups.back();
+				prev_group.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_PROCEDURAL_HIT_GROUP_KHR;
+				prev_group.intersectionShader = stage_idx;
+				push_group = false;
+				break;
+			}
 			case VK_SHADER_STAGE_VERTEX_BIT:
 			case VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT:
 			case VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT:
@@ -244,7 +255,6 @@ void Pipeline::create_rt_pipeline(const RTPassSettings& settings, const std::vec
 			case VK_SHADER_STAGE_COMPUTE_BIT:
 			case VK_SHADER_STAGE_ALL_GRAPHICS:
 			case VK_SHADER_STAGE_ALL:
-			case VK_SHADER_STAGE_INTERSECTION_BIT_KHR:
 			case VK_SHADER_STAGE_CALLABLE_BIT_KHR:
 			case VK_SHADER_STAGE_TASK_BIT_NV:
 			case VK_SHADER_STAGE_MESH_BIT_NV:
@@ -252,7 +262,9 @@ void Pipeline::create_rt_pipeline(const RTPassSettings& settings, const std::vec
 			case VK_SHADER_STAGE_CLUSTER_CULLING_BIT_HUAWEI:
 				break;
 		}
-		groups.push_back(group);
+		if (push_group) {
+			groups.push_back(group);
+		}
 		stages.push_back(stage);
 		stage_idx++;
 	}

@@ -58,6 +58,9 @@ float light_pdf(const Light light, const vec3 n_s, const vec3 wi) {
 		case LIGHT_DIRECTIONAL: {
 			return 0;
 		} break;
+		case LIGHT_SPHERE: {
+			return max(dot(n_s, wi) / PI, 0);
+		} break;
 	}
 }
 
@@ -73,6 +76,9 @@ float light_pdf_a_to_w(const uint light_flags, const float pdf_a, const vec3 n_s
 		} break;
 		case LIGHT_DIRECTIONAL: {
 			return 1;
+		} break;
+		case LIGHT_SPHERE: {
+			return pdf_a * wi_len_sqr / cos_from_light;
 		} break;
 	}
 	return 0;
@@ -91,6 +97,9 @@ float light_pdf(uint light_flags, const vec3 n_s, const vec3 wi) {
 		case LIGHT_DIRECTIONAL: {
 			return 0;
 		}
+		case LIGHT_SPHERE: {
+			return max(dot(n_s, wi) / PI, 0);
+		}
 	}
 }
 
@@ -105,6 +114,9 @@ float light_pdf_Le(uint light_flags, const vec3 n_s, const vec3 wi) {
 		}
 		case LIGHT_DIRECTIONAL: {
 			return 1;
+		}
+		case LIGHT_SPHERE: {
+			return max(dot(n_s, wi) / PI, 0);
 		}
 	}
 }
@@ -293,6 +305,29 @@ vec3 sample_light_Li(const vec4 rands_pos, const vec3 p, const int num_lights, o
 			n = -wi;
 			pos = light_p;
 		} break;
+		case LIGHT_SPHERE: {
+			// Uniform sampling over the sphere surface.
+			// rands_pos.y => cos(theta), rands_pos.z => phi
+			float cos_theta = 1.0 - 2.0 * rands_pos.y;
+			float sin_theta = sqrt(max(0.0, 1.0 - cos_theta * cos_theta));
+			float phi_s = TWO_PI * rands_pos.z;
+			vec3 sphere_nrm = vec3(sin_theta * cos(phi_s), cos_theta, sin_theta * sin(phi_s));
+			float sphere_area = 4.0 * PI * light.world_radius * light.world_radius;
+			pos = light.pos + light.world_radius * sphere_nrm;
+			n = sphere_nrm;
+			wi = pos - p;
+			float wi_len_sqr = dot(wi, wi);
+			wi_len = sqrt(wi_len_sqr);
+			wi /= wi_len;
+			cos_from_light = abs(dot(sphere_nrm, -wi));
+			L = light.L;
+			pdf_pos_a = 1.0 / sphere_area;
+			pdf_pos_w = pdf_pos_a * wi_len_sqr / cos_from_light;
+			pdf_pos_dir_w = cos_from_light * INV_PI * pdf_pos_a;
+			// prim_mesh_idx reused as sphere primitive index for MIS matching.
+			light_record.triangle_idx = light.prim_mesh_idx;
+			light_record.instance_idx = 0;  // sphere TLAS instance custom index
+		} break;
 		default:
 			break;
 	}
@@ -397,6 +432,23 @@ vec3 sample_light_Le(vec4 rands_pos, vec2 rands_dir, const int num_lights, const
 			pdf_dir_w = 1;
 			cos_from_light = 1;
 			n = wi;
+		} break;
+		case LIGHT_SPHERE: {
+			// Sample a point on the sphere surface and emit into the hemisphere above it.
+			float cos_theta_s = 1.0 - 2.0 * rands_pos.y;
+			float sin_theta_s = sqrt(max(0.0, 1.0 - cos_theta_s * cos_theta_s));
+			float phi_s = TWO_PI * rands_pos.z;
+			vec3 sphere_nrm = vec3(sin_theta_s * cos(phi_s), cos_theta_s, sin_theta_s * sin(phi_s));
+			float sphere_area = 4.0 * PI * light.world_radius * light.world_radius;
+			pos = light.pos + light.world_radius * sphere_nrm;
+			n = sphere_nrm;
+			wi = sample_hemisphere(rands_dir, sphere_nrm, phi);
+			cos_from_light = max(dot(sphere_nrm, wi), 0.0);
+			L = light.L;
+			pdf_pos_a = 1.0 / sphere_area;
+			pdf_dir_w = cos_from_light * INV_PI;
+			light_record.triangle_idx = light.prim_mesh_idx;
+			light_record.instance_idx = 0;
 		} break;
 		default:
 			break;
