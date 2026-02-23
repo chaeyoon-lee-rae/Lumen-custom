@@ -139,12 +139,16 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL debug_callback(VkDebugUtilsMessageSeverity
 	//	return VK_TRUE;
 	// }
 
-	if ((messageSeverity & (VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT)) == 0) {
-		// LUMEN_TRACE("Validation Warning: {0} ", pCallbackData->pMessage);
-		return VK_TRUE;
+	if (messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT) {
+		// debugPrintfEXT output arrives at INFO severity
+		LUMEN_TRACE("{0}", pCallbackData->pMessage);
+		return VK_FALSE;
 	}
-	LUMEN_ERROR("Validation Error: {0} ", pCallbackData->pMessage);
-	return VK_FALSE;
+	if (messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT) {
+		LUMEN_ERROR("Validation Error: {0} ", pCallbackData->pMessage);
+		return VK_FALSE;
+	}
+	return VK_TRUE;
 }
 
 static void setup_debug_messenger() {
@@ -591,7 +595,14 @@ static void create_instance() {
 		instance_CI.enabledLayerCount = static_cast<uint32_t>(_validation_layers_lst.size());
 		instance_CI.ppEnabledLayerNames = _validation_layers_lst.data();
 		VkDebugUtilsMessengerCreateInfoEXT debug_CI = debug_messenger(debug_callback);
-		instance_CI.pNext = (VkDebugUtilsMessengerCreateInfoEXT*)&debug_CI;
+		// Enable debugPrintfEXT output from shaders
+		VkValidationFeatureEnableEXT printf_feature = VK_VALIDATION_FEATURE_ENABLE_DEBUG_PRINTF_EXT;
+		VkValidationFeaturesEXT validation_features{};
+		validation_features.sType = VK_STRUCTURE_TYPE_VALIDATION_FEATURES_EXT;
+		validation_features.enabledValidationFeatureCount = 1;
+		validation_features.pEnabledValidationFeatures = &printf_feature;
+		validation_features.pNext = &debug_CI;
+		instance_CI.pNext = &validation_features;
 	} else {
 		instance_CI.enabledLayerCount = 0;
 		instance_CI.pNext = nullptr;

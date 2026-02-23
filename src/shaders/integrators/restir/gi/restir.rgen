@@ -51,6 +51,11 @@ void main() {
         traceRayEXT(tlas, flags, 0xFF, 0, 0, 0, origin.xyz, tmin, direction,
                     tmax, 0);
         const bool found_isect = payload.material_idx != -1;
+        // DEBUG: visualize geometry hit at depth 0 — red=miss, green=hit
+        if (depth == 0) {
+            tmp_col.d[pixel_idx] = found_isect ? vec3(0, 1, 0) : vec3(1, 0, 0);
+            return;
+        }
         if (depth >= pc.max_depth - 1) {
             break;
         }

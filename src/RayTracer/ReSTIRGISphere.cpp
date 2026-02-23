@@ -198,7 +198,8 @@ void ReSTIRGISphere::init() {
 
 	tmp_col_buffer = prm::get_buffer({
 		.name        = "Temp Color",
-		.usage       = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+		.usage       = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
+		               VK_BUFFER_USAGE_TRANSFER_DST_BIT,
 		.memory_type = vk::BufferType::GPU,
 		.size        = Window::width() * Window::height() * sizeof(float) * 3,
 	});
@@ -351,6 +352,7 @@ void ReSTIRGISphere::render() {
 		          .dims    = {Window::width(), Window::height()}})
 		.push_constants(&pc_ray)
 		.zero(restir_samples_buffer)
+		.zero(tmp_col_buffer)
 		.zero(temporal_reservoir_buffer, !do_spatiotemporal)
 		.zero(spatial_reservoir_buffer,  !do_spatiotemporal)
 		.bind(rt_bindings)
