@@ -1,3 +1,4 @@
+#pragma once
 #include "../../../commons.h"
 
 struct PCReSTIR {

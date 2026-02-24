@@ -96,11 +96,19 @@ vec3 calc_L_with_visibility_check(const RestirReservoir r) {
     const vec3 f = eval_bsdf(hit_mat, wo, wi, normal, 1, true);
     const float cos_x = dot(normal, wi);
     const float g = abs(dot(light_n, -wi)) / (wi_len * wi_len);
+    vec3 shadow_origin_cv = offset_ray(pos, normal);
+    float shadow_tmax_cv = wi_len - EPS;
+    if (get_light_type(lights[light_idx].light_flags) == LIGHT_SPHERE) {
+        vec3 oc = shadow_origin_cv - lights[light_idx].pos;
+        float b = dot(oc, wi);
+        float disc = b * b - (dot(oc, oc) - lights[light_idx].world_radius * lights[light_idx].world_radius);
+        shadow_tmax_cv = max(-b - sqrt(max(disc, 0.0)) - EPS, 0.0);
+    }
     any_hit_payload.hit = 1;
     traceRayEXT(tlas,
                 gl_RayFlagsTerminateOnFirstHitEXT |
                     gl_RayFlagsSkipClosestHitShaderEXT,
-                0xFF, 1, 0, 1, offset_ray(pos, normal), 0, wi, wi_len - EPS, 1);
+                0xFF, 1, 0, 1, shadow_origin_cv, 0, wi, shadow_tmax_cv, 1);
     bool visible = any_hit_payload.hit == 0;
     if (visible) {
         return f * Le * abs(cos_x) * g;

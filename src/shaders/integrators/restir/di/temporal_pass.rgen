@@ -87,7 +87,7 @@ void main() {
             const vec3 f =
                 eval_bsdf(normal, wo, hit_mat, 1, side, wi, bsdf_pdf);
 
-            pdf_light *= 1 / pc.num_lights;
+            pdf_light /= float(pc.num_lights);
             // f * L * G / pdf
             RestirData s;
             s.light_idx = record.light_idx;
@@ -116,12 +116,20 @@ void main() {
             const float wi_len = length(wi);
             wi /= wi_len;
 
+            vec3 shadow_origin = offset_ray2(pos, normal);
+            float shadow_tmax = wi_len - EPS;
+            if (get_light_type(lights[light_idx].light_flags) == LIGHT_SPHERE) {
+                vec3 oc = shadow_origin - lights[light_idx].pos;
+                float b = dot(oc, wi);
+                float disc = b * b - (dot(oc, oc) - lights[light_idx].world_radius * lights[light_idx].world_radius);
+                shadow_tmax = max(-b - sqrt(max(disc, 0.0)) - EPS, 0.0);
+            }
             any_hit_payload.hit = 1;
             traceRayEXT(tlas,
                         gl_RayFlagsTerminateOnFirstHitEXT |
                             gl_RayFlagsSkipClosestHitShaderEXT,
-                        0xFF, 1, 0, 1, offset_ray2(pos, normal), 0, wi,
-                        wi_len - EPS, 1);
+                        0xFF, 1, 0, 1, shadow_origin, 0, wi,
+                        shadow_tmax, 1);
             vec3 f = eval_bsdf(hit_mat, wo, wi, normal, 1, side);
             const float cos_x = dot(normal, wi);
             const float g = abs(dot(light_n, -wi)) / (wi_len * wi_len);
@@ -140,7 +148,7 @@ void main() {
         combine_reservoir(r, r_new);
         uint num_samples = r_new.m;
         if (pc.do_spatiotemporal == 1) {
-            r_prev.m = min(20 * r.m, r_prev.m);
+            r_prev.m = min(20 * r_new.m, r_prev.m);
             combine_reservoir(r, r_prev);
             num_samples += r_prev.m;
         }

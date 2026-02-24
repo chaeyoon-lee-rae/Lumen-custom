@@ -502,6 +502,14 @@ vec3 sample_light_with_idx(const vec4 rands_pos, const vec3 p, const int num_lig
 		pos = p + dir * (2 * light.world_radius);
 		n = -dir;
 		L = light.L;
+	} else if (light_type == LIGHT_SPHERE) {
+		float cos_theta_s = 1.0 - 2.0 * rands_pos.y;
+		float sin_theta_s = sqrt(max(0.0, 1.0 - cos_theta_s * cos_theta_s));
+		float phi_s = TWO_PI * rands_pos.z;
+		vec3 sphere_nrm = vec3(sin_theta_s * cos(phi_s), cos_theta_s, sin_theta_s * sin(phi_s));
+		pos = light.pos + light.world_radius * sphere_nrm;
+		n = sphere_nrm;
+		L = light.L;
 	}
 	return L;
 }
