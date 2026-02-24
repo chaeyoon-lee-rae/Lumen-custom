@@ -279,6 +279,9 @@ void RayTracer::create_integrator(int integrator_idx) {
 		case int(IntegratorType::ReSTIRGISphere):
 			integrator = std::make_unique<ReSTIRGISphere>(&scene, tlas);
 			break;
+		case int(IntegratorType::ReSTIRDISphere):
+			integrator = std::make_unique<ReSTIRDISphere>(&scene, tlas);
+			break;
 		default:
 			break;
 	}
@@ -335,7 +338,8 @@ bool RayTracer::gui() {
 	}
 
 	const char* settings[] = {"Path",	"BDPT",	  "SPPM",	   "VCM",		"PSSMLT", "SMLT",
-							  "VCMMLT", "ReSTIR", "ReSTIR GI", "ReSTIR PT", "DDGI",   "ReSTIR GI Sphere"};
+							  "VCMMLT", "ReSTIR", "ReSTIR GI", "ReSTIR PT", "DDGI",   "ReSTIR GI Sphere",
+							  "ReSTIR DI Sphere"};
 
 	static int curr_integrator_idx = int(scene.config->integrator_type);
 	if (ImGui::BeginCombo("Select Integrator", settings[curr_integrator_idx])) {
@@ -357,7 +361,8 @@ bool RayTracer::gui() {
 		updated = true;
 		vkDeviceWaitIdle(vk::context().device);
 		bool was_custom_accel = typeid(*integrator) == typeid(DDGI) ||
-		                        typeid(*integrator) == typeid(ReSTIRGISphere);
+		                        typeid(*integrator) == typeid(ReSTIRGISphere) ||
+		                        typeid(*integrator) == typeid(ReSTIRDISphere);
 		integrator->destroy();
 		RenderGraph* rg = vk::render_graph();
 		REGISTER_BUFFER_WITH_ADDRESS(RTUtilsDesc, desc, out_img_addr, output_img_buffer, rg);
@@ -375,7 +380,8 @@ bool RayTracer::gui() {
 		scene.config->path_length = prev_scene_config.path_length;
 		create_integrator(curr_integrator_idx);
 		bool is_custom_accel = typeid(*integrator) == typeid(DDGI) ||
-		                       typeid(*integrator) == typeid(ReSTIRGISphere);
+		                       typeid(*integrator) == typeid(ReSTIRGISphere) ||
+		                       typeid(*integrator) == typeid(ReSTIRDISphere);
 		integrator->init();
 		if (was_custom_accel || is_custom_accel) {
 			destroy_accel();

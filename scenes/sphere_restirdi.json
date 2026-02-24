@@ -1,0 +1,28 @@
+{
+    "integrator": {
+        "type": "restirdisphere",
+        "path_length": 6,
+        "sky_col": [0, 0, 0]
+    },
+    "mesh_file": "sphere_stub.obj",
+    "camera": {
+        "fov": 60,
+        "position": [0, 1, 0],
+        "dir": [0, 0, -1]
+    },
+    "bsdfs": [
+        {
+            "type": "diffuse",
+            "albedo": [0.8, 0.8, 0.8],
+            "refs": ["stub"]
+        },
+        {
+            "type": "principled",
+            "albedo": [0.8, 0.8, 0.8],
+            "roughness": 1.0,
+            "metallic": 0.0,
+            "refs": []
+        }
+    ],
+    "lights": []
+}
