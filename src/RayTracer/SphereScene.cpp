@@ -61,6 +61,8 @@ SphereSceneData SphereSceneData::generate(const SphereSceneConfig& cfg) {
 	std::uniform_real_distribution<float> xz_dist(-cfg.scene_extent, cfg.scene_extent);
 	std::uniform_real_distribution<float> color_dist(0.01f, 1.0f);
 	std::uniform_real_distribution<float> intensity_dist(cfg.min_light_intensity, cfg.max_light_intensity);
+	std::uniform_real_distribution<float> roughness_dist(0.0f, 1.0f);
+	std::uniform_real_distribution<float> metallic_dist(0.0f, 1.0f);
 
 	// ── Sphere placement with collision detection ─────────────────────────
 	data.spheres.reserve(cfg.total_sphere_count);
@@ -118,20 +120,34 @@ SphereSceneData SphereSceneData::generate(const SphereSceneConfig& cfg) {
 			mat.emissive_factor = glm::vec3(r, g, b) * (rad / mag);
 			mat.albedo          = glm::vec3(0.0f);
 		} else {
+			// BIM-matched BRDF: principled GGX with per-material roughness/metallic
+			// Ref: BIM scene_spheres.cpp:126-127 (random), generateSamples.rgen:121 (evalBRDF)
+			mat.bsdf_type       = BSDF_TYPE_PRINCIPLED;
+			mat.bsdf_props      = BSDF_FLAG_DIFFUSE | BSDF_FLAG_REFLECTION;
 			mat.albedo          = glm::vec3(color_dist(rng), color_dist(rng), color_dist(rng));
 			mat.emissive_factor = glm::vec3(0.0f);
+			//mat.roughness       = roughness_dist(rng);
+			mat.roughness		= 1.0f;
+			//mat.metallic        = metallic_dist(rng);
+			mat.metallic		= 0.0f;
+			mat.spec_trans      = 0.0f;
+			mat.clearcoat       = 0.0f;
 		}
 		data.materials.push_back(mat);
 	}
 
-	// Shared diffuse gray material for both planes.
+	// BIM-matched plane materials: principled GGX, roughness=1, metallic=0
 	{
 		Material pm{};
-		pm.bsdf_type  = BSDF_TYPE_DIFFUSE;
+		pm.bsdf_type  = BSDF_TYPE_PRINCIPLED;
 		pm.bsdf_props = BSDF_FLAG_DIFFUSE | BSDF_FLAG_REFLECTION;
 		pm.texture_id = -1;
 		pm.ior        = 1.5f;
 		pm.albedo     = glm::vec3(0.8f);
+		pm.roughness  = 1.0f;
+		pm.metallic   = 0.0f;
+		pm.spec_trans = 0.0f;
+		pm.clearcoat  = 0.0f;
 		data.materials.push_back(pm);   // index N   = lower plane
 		data.materials.push_back(pm);   // index N+1 = upper plane
 	}

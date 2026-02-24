@@ -144,6 +144,13 @@ void ReSTIRGISphere::init() {
 	// ── 5. Base integrator init (output texture, UBO, callbacks) ──────────
 	Integrator::init();
 
+	// Override camera to match BIM renderer: pos=(-0.4,-0.5,0.9), yaw=22°, pitch=-10°.
+	// Lumen rotation=(rx,ry,rz): camera Z-axis = (sin(ry)*cos(rx), -sin(rx), cos(ry)*cos(rx)).
+	// Actual ray dir = -Z_cam. BIM forward=(0.369,-0.174,-0.913) → need -Z_cam=BIM_forward
+	// → rx=-10, ry=-22. Bypasses the broken lookAtLH+decompose in the dir constructor.
+	lumen_scene->camera->rotation = glm::vec3(0.0f, -22.0f, 0.0f);
+	update_uniform_buffers();
+
 	// ── 6. Sphere primitive buffer (binding 10) ───────────────────────────
 	sphere_buffer = prm::get_buffer({
 		.name        = "Sphere Primitives",
@@ -291,7 +298,7 @@ void ReSTIRGISphere::create_accel(vk::BVH& tlas_out, std::vector<vk::BVH>& blase
 
 	// Instance 0: sphere BLAS
 	instances[0].transform               = vk::to_vk_matrix(glm::mat4(1.0f));
-	instances[0].instanceCustomIndex     = 0;    // not used by sphere.rchit
+	instances[0].instanceCustomIndex     = 0xFF; // sphere; must match light_record.instance_idx in commons.glsl LIGHT_SPHERE
 	instances[0].mask                    = 0xFF;
 	instances[0].instanceShaderBindingTableRecordOffset = 0;
 	instances[0].flags                   = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;

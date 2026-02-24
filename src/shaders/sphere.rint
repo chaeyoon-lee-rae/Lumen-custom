@@ -14,9 +14,6 @@ layout(buffer_reference, scalar, buffer_reference_align = 4) readonly buffer Sph
 hitAttributeEXT SphereHitAttribs sphere_attribs;
 
 void main() {
-	if (gl_PrimitiveID < 5) {
-		debugPrintfEXT("sphere.rint: prim=%u\n", gl_PrimitiveID);
-	}
 	SpherePrims sphere_buf = SpherePrims(scene_desc.sphere_prims_addr);
 	SpherePrimitive s = sphere_buf.spheres[gl_PrimitiveID];
 

@@ -326,7 +326,7 @@ vec3 sample_light_Li(const vec4 rands_pos, const vec3 p, const int num_lights, o
 			pdf_pos_dir_w = cos_from_light * INV_PI * pdf_pos_a;
 			// prim_mesh_idx reused as sphere primitive index for MIS matching.
 			light_record.triangle_idx = light.prim_mesh_idx;
-			light_record.instance_idx = 0;  // sphere TLAS instance custom index
+			light_record.instance_idx = 0xFF;  // sphere TLAS instanceCustomIndex (must match create_accel)
 		} break;
 		default:
 			break;
@@ -448,7 +448,7 @@ vec3 sample_light_Le(vec4 rands_pos, vec2 rands_dir, const int num_lights, const
 			pdf_pos_a = 1.0 / sphere_area;
 			pdf_dir_w = cos_from_light * INV_PI;
 			light_record.triangle_idx = light.prim_mesh_idx;
-			light_record.instance_idx = 0;
+			light_record.instance_idx = 0xFF;
 		} break;
 		default:
 			break;

@@ -71,7 +71,7 @@ class PerspectiveCamera : public Camera {
 		make_projection_matrix(true);
 		set_position(pos);
 		set_direction(dir);
-		view = glm::lookAtLH(position, position + direction, glm::vec3(0, 1, 0));
+		view = glm::lookAtRH(position, position + direction, glm::vec3(0, 1, 0));
 		glm::vec3 scale;
 		glm::quat q;
 		glm::vec3 translation;

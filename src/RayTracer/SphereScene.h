@@ -5,16 +5,16 @@
 #include <cstdint>
 
 struct SphereSceneConfig {
-	uint32_t total_sphere_count  = 1000;
-	uint32_t light_sphere_count  = 20;
-	float    min_light_intensity = 10.0f;
-	float    max_light_intensity = 20.0f;
-	float    min_radius          = 0.5f;
+	uint32_t total_sphere_count  = 50000;
+	uint32_t light_sphere_count  = 300;
+	float    min_light_intensity = 2000.0f;
+	float    max_light_intensity = 2000.0f;
+	float    min_radius          = 2.0f;
 	float    max_radius          = 3.0f;
-	float    lower_plane_y       = 0.0f;
-	float    upper_plane_y       = 100.0f;
-	float    scene_extent        = 100.0f;
-	float    plane_margin        = 0.0f;
+	float    lower_plane_y       = -10.0f;
+	float    upper_plane_y       = 50.0f;
+	float    scene_extent        = 2000.0f;
+	float    plane_margin        = 1.0f;
 	uint32_t plane_tessellation  = 10;
 	uint32_t seed                = 42;
 };

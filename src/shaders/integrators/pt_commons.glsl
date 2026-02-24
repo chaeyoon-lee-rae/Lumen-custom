@@ -18,8 +18,19 @@ vec3 uniform_sample_light(inout uvec4 seed, const Material mat, vec3 pos, const 
 	vec3 f = eval_bsdf(n_s, wo, mat, 1, side, wi, bsdf_pdf);
 	float pdf_light;
 	any_hit_payload.hit = 1;
+	float shadow_tmax = wi_len - EPS;
+	if (get_light_type(record.flags) == LIGHT_SPHERE) {
+		// Prevent false self-occlusion: the shadow ray toward a sampled surface point
+		// on the sphere would also hit the sphere's near face at t ≈ wi_len - 2*radius,
+		// which is accepted as an occluder. Instead, stop just before the entry point.
+		Light sph_light = lights[record.light_idx];
+		vec3 oc = p - sph_light.pos;
+		float b = dot(oc, wi);
+		float disc = b * b - (dot(oc, oc) - sph_light.world_radius * sph_light.world_radius);
+		shadow_tmax = max(-b - sqrt(max(disc, 0.0)) - EPS, 0.0);
+	}
 	traceRayEXT(tlas, gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsSkipClosestHitShaderEXT, 0x1, 1, 0, 1, p, 0, wi,
-				wi_len - EPS, 1);
+				shadow_tmax, 1);
 	visible = any_hit_payload.hit == 0;
 	if (visible && pdf_light_w > 0) {
 		const float mis_weight = is_light_delta(record.flags) ? 1 : 1 / (1 + bsdf_pdf / pdf_light_w);

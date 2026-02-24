@@ -43,5 +43,5 @@ class ReSTIRGISphere : public Integrator {
 
 	PCReSTIRGI pc_ray{};
 	bool do_spatiotemporal   = false;
-	bool enable_accumulation = false;
+	bool enable_accumulation = true;
 };

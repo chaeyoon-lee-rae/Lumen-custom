@@ -43,7 +43,11 @@ void main() {
     }
 
     if(pc.enable_tonemapping == 1) {
-        img = vec4(aces(img.rgb), img.a);
+        // BIM-matched: exponential tone map + gamma 2.2
+        // Ref: BIM finalShading.comp:106-107, common.h:9 (exposure=0.8)
+        vec3 mapped = vec3(1.0) - exp(-0.8 * img.rgb);
+        // mapped = pow(mapped, vec3(1.0 / 2.2));
+        img = vec4(mapped, img.a);
     }
     fragColor =  img;
 }
