@@ -66,9 +66,9 @@ void combine_reservoir(inout Reservoir r1, const Reservoir r2,
 }
 
 void main() {
-    // TODO: Adaptively change this
     const uint pingpong = (pc.total_frame_num % 2);
-    const float max_r = 10;
+    float radius = float(min(pc.size_x, pc.size_y)) * 0.1;  // paper: start at 10% of resolution
+    const float min_radius = 3.0;
     const float depth_threshold = 0.05;  // paper: normalized depth within 5%
     const float angle_threshold = 25 * PI / 180;
     ReservoirSample q = samples.d[pixel_idx];
@@ -106,7 +106,7 @@ void main() {
     for (int i = 0; i < max_iter; i++) {
         // Choose a neighbor pixel
         const float randa = rand(seed) * 2 * PI;
-        const float randr = sqrt(rand(seed)) * max_r;
+        const float randr = sqrt(rand(seed)) * radius;
         ivec2 rand_offset =
             ivec2(floor(cos(randa) * randr), floor(sin(randa) * randr));
         const ivec2 coords = clamp(ivec2(gl_LaunchIDEXT.xy) + rand_offset,
@@ -118,9 +118,11 @@ void main() {
             continue;
         }
         // Geometric similarity: normalized depth within 5%, normal within 25 deg
+        // On rejection: halve radius (paper Sec. 5), min 3px
         const float depth_n = length(q_n.x_v - cam_pos);
         if (depth_n == 0.0 || abs(depth_q / depth_n - 1.0) > depth_threshold ||
             dot(q_n.n_v, q.n_v) < cos(angle_threshold)) {
+            radius = max(radius * 0.5, min_radius);
             continue;
         }
         Reservoir r_n = temp_reservoirs.d[offset(pingpong ^ 1) + coords_idx];
