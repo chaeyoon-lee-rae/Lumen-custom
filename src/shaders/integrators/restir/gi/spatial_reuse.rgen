@@ -69,9 +69,11 @@ void main() {
     // TODO: Adaptively change this
     const uint pingpong = (pc.total_frame_num % 2);
     const float max_r = 10;
-    const float dist_threshold = 0.01;
+    const float depth_threshold = 0.05;  // paper: normalized depth within 5%
     const float angle_threshold = 25 * PI / 180;
     ReservoirSample q = samples.d[pixel_idx];
+    const vec3 cam_pos = vec3(ubo.inv_view * vec4(0, 0, 0, 1));
+    const float depth_q = length(q.x_v - cam_pos);
     Reservoir r_s;
    
     if (pc.do_spatiotemporal == 1) {
@@ -115,10 +117,10 @@ void main() {
         if (length(q_n.n_s) == 0) {
             continue;
         }
-        // Geometric similarity
-        float dist = dot(q_n.x_v - q.x_v, q_n.x_v - q.x_v);
-        if (dist > dist_threshold ||
-            (dot(q_n.n_v, q.n_v)) < cos(angle_threshold)) {
+        // Geometric similarity: normalized depth within 5%, normal within 25 deg
+        const float depth_n = length(q_n.x_v - cam_pos);
+        if (depth_n == 0.0 || abs(depth_q / depth_n - 1.0) > depth_threshold ||
+            dot(q_n.n_v, q.n_v) < cos(angle_threshold)) {
             continue;
         }
         Reservoir r_n = temp_reservoirs.d[offset(pingpong ^ 1) + coords_idx];
