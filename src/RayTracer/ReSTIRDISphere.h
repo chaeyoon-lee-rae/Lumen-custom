@@ -38,6 +38,6 @@ class ReSTIRDISphere : public Integrator {
 	vk::Buffer* tmp_col_buffer               = nullptr;
 
 	PCReSTIR pc_ray{};
-	bool do_spatiotemporal   = true;   // BIM-matched: reuseSamples → temporal reservoir reuse across frames
-	bool enable_accumulation = false;  // BIM reuseSamples does not use frame color averaging
+	bool do_spatiotemporal   = false;   // BIM-matched: reuseSamples → temporal reservoir reuse across frames
+	bool enable_accumulation = true;  // BIM reuseSamples does not use frame color averaging
 };
