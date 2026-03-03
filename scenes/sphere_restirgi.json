@@ -1,7 +1,7 @@
 {
     "integrator": {
         "type": "restirgisphere",
-        "path_length": 6,
+        "path_length": 3,
         "sky_col": [0, 0, 0]
     },
     "mesh_file": "sphere_stub.obj",

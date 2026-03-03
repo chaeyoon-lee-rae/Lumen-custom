@@ -12,6 +12,22 @@
 #include "restirdi_commons.glsl"
 #include "../../pt_commons.glsl"
 
+/*
+
+struct RestirGBufferData {
+	vec3 pos;
+	uint mat_idx;
+	vec3 normal;
+	uint pad;
+	vec2 uv;
+	vec2 pad2;
+	vec3 albedo;
+	uint pad3;
+	vec3 n_g;
+	uint pad4;
+};
+*/
+
 void main() {
     const vec2 pixel = vec2(gl_LaunchIDEXT.xy) + vec2(0.5);
     const vec2 in_uv = pixel / vec2(gl_LaunchSizeEXT.xy);
@@ -20,21 +36,57 @@ void main() {
     vec4 target = ubo.inv_projection * vec4(d.x, d.y, 1, 1);
     vec3 direction = vec3(sample_camera(d));
     vec3 throughput = vec3(1);
+
+    /*
+    struct RestirData {
+        uint light_idx;
+        uint light_mesh_idx;
+        uvec4 seed;
+    };
+
+    struct RestirReservoir {
+        float w_sum;
+        float W;
+        uint m;
+        RestirData s;
+        float p_hat;
+        float pdf;
+    };
+    */
+
     RestirReservoir r_new;
     RestirReservoir r_prev;
     RestirReservoir r;
     init_reservoir(r_new);
     init_reservoir(r_prev);
     init_reservoir(r);
+
     r.s.seed = seed;
     r_new.s.seed = seed;
+    
     traceRayEXT(tlas, flags, 0xFF, 0, 0, 0, origin, tmin, direction, tmax, 0);
+
+    /*
+    struct HitPayload {
+        vec3 n_g;
+        vec3 n_s;
+        vec3 pos;
+        vec2 uv;
+        uint material_idx;
+        uint triangle_idx;
+        uint instance_idx;
+        float area;
+        float dist;
+        uint hit_kind;
+    };  
+    */
 
     pos = payload.pos;
     uv = payload.uv;
     mat_idx = payload.material_idx;
     const bool found_isect = mat_idx != -1;
     const vec3 wo = normalize(origin - pos);
+
     if (found_isect) {
         vec3 n_s = payload.n_s;
         bool side = true;
@@ -51,7 +103,6 @@ void main() {
         const Material hit_mat = load_material(mat_idx, uv);
 
         // Generate samples
-
         const uint M = 32;
         const uint light_samples = min(pc.light_triangle_count, 32);
 
@@ -74,9 +125,21 @@ void main() {
             vec3 wi;
             float wi_len;
             float pdf_light;
+            /*
+            struct LightRecord {
+                uint light_idx;
+                uint flags;
+                vec2 bary;
+                uint triangle_idx;
+                uint instance_idx;
+            };
+            */
             LightRecord record;
             float cos_from_light;
             vec3 light_pos, light_n;
+
+            // TODO: 실제 sample_light_Li sampling 동작 방법은?
+            // TODO: 광량에 따라서 sampling하고 있는지? 아님 그냥 uniform이던가?
             const vec3 Le = sample_light_Li(
                 rand4(seed), payload.pos, pc.num_lights, wi, wi_len, light_n,
                 light_pos, pdf_light, cos_from_light, record);
@@ -94,9 +157,10 @@ void main() {
             s.light_mesh_idx = record.triangle_idx;
             s.seed = light_seed;
             const float p_hat = length(f * Le * abs(cos_x) * g);
-            update_reservoir(r_new, s, p_hat / pdf_light);
+            update_reservoir(r_new, s, p_hat / pdf_light);  // TODO: pdf_light로 나눠준다고? 논문에서 target distribution이 이렇지 않았던 거 같은데?
         }
-
+        
+        // TODO: visibility check를 temporal 안에서 하던가? 논문과 비교
         // Visibility check for the selected candidate
         if (r_new.w_sum > 0) {
             vec2 uv_unused;
@@ -108,6 +172,7 @@ void main() {
             const vec4 rands =
                 vec4(rand(r_seed), rand(r_seed), rand(r_seed), rand(r_seed));
 
+            // TODO: 굳이 다시 계산해줘야하나? 최종 선택된 후보 계산했을 때 이미 Le 계산을 했을텐데?
             vec3 Le = sample_light_with_idx(
                 rands, payload.pos, pc.num_lights, light_idx,
                 light_triangle_idx, light_pos, light_n);
@@ -118,6 +183,8 @@ void main() {
 
             vec3 shadow_origin = offset_ray2(pos, normal);
             float shadow_tmax = wi_len - EPS;
+
+            // TODO: is this applied to BIM? if not, remove
             if (get_light_type(lights[light_idx].light_flags) == LIGHT_SPHERE) {
                 vec3 oc = shadow_origin - lights[light_idx].pos;
                 float b = dot(oc, wi);
@@ -133,7 +200,8 @@ void main() {
             vec3 f = eval_bsdf(hit_mat, wo, wi, normal, 1, side);
             const float cos_x = dot(normal, wi);
             const float g = abs(dot(light_n, -wi)) / (wi_len * wi_len);
-            bool visible = any_hit_payload.hit == 0 && f != vec3(0);
+            // TODO: float를 0과 비교하는게 맞음?
+            bool visible = any_hit_payload.hit == 0 && f != vec3(0);    
             r_new.W = 0;
             if (visible) {
                 const float p_hat = length(f * Le * abs(cos_x) * g);
@@ -147,12 +215,15 @@ void main() {
         // Temporal reuse
         combine_reservoir(r, r_new);
         uint num_samples = r_new.m;
+
+        // TODO: 애초에 ReSTIR 알고리즘이 spatiotemporal을 쓰는 건데 이걸 왜 토글함
         if (pc.do_spatiotemporal == 1) {
             r_prev.m = min(20 * r_new.m, r_prev.m);
             combine_reservoir(r, r_prev);
             num_samples += r_prev.m;
         }
         r.m = num_samples;
+
         if (r_new.W > 0 || r_prev.W > 0) {
             const float phat = calc_p_hat(r) * r.m;
             r.W = phat == 0 ? 0 : r.w_sum / (phat);
@@ -172,10 +243,14 @@ void main() {
         vec3 f = sample_bsdf(normal, wo, hit_mat, 1 /*radiance=cam*/, side,
                              direction, pdf, cos_theta, seed);
         throughput *= f * abs(cos_theta) / pdf;
+        // TODO: BSDF_FLAG_SPECULAR는 어디서 오는 거임?
         bool specular = (hit_mat.bsdf_props & BSDF_FLAG_SPECULAR) != 0;
         origin = offset_ray(pos, n_g);
+
+        // TODO: DI에서 pathtracing을 한다? 흠..? 
         // Do traditional path tracing
         for (int depth = 1;; depth++) {
+            // NOTE: depth 체크하기 전에 무조건 여기서 ray를 한 번 쏴주기 때문에 cost가 생길 수 밖에 없음
             traceRayEXT(tlas, flags, 0xFF, 0, 0, 0, origin, tmin, direction,
                         tmax, 0);
             const bool found_isect = payload.material_idx != -1;

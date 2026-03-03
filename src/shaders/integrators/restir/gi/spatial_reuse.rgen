@@ -66,6 +66,7 @@ void combine_reservoir(inout Reservoir r1, const Reservoir r2,
 }
 
 void main() {
+    const bool unbiased = true;  // toggle: true = Alg.4 Z correction, false = biased W = w_sum/(M*p_hat)
     const uint pingpong = (pc.total_frame_num % 2);
     float radius = float(min(pc.size_x, pc.size_y)) * 0.1;  // paper: start at 10% of resolution
     const float min_radius = 3.0;
@@ -135,7 +136,7 @@ void main() {
         sum += r_n.m;
     }
     const float phat_val = p_hat(r.s.L_o);
-    if (phat_val > 0) {
+    if (unbiased && phat_val > 0) {
         for (int i = 0; i < q_cnt; i++) {
             // Paper Alg.4 line 18: check p_hat_qn(Rs.z) > 0
             // i.e. is Rs.z.x_s visible from neighbor qn's visible point?
@@ -155,7 +156,8 @@ void main() {
     }
 
     r.m = min(sum, M_MAX);
-    r.W = Z * phat_val == 0 ? 0 : r.w_sum / (Z * phat_val);
+    r.W = unbiased ? (Z * phat_val == 0 ? 0 : r.w_sum / (Z * phat_val))
+                   : (phat_val * float(sum) == 0 ? 0 : r.w_sum / (phat_val * float(sum)));
 #define sr spatial_reservoirs.d[offset(pingpong) + pixel_idx]
     sr.w_sum = r.w_sum;
     sr.W = r.W;

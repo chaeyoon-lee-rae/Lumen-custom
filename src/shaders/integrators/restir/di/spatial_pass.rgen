@@ -10,16 +10,37 @@
 #include "restirdi_commons.h"
 #include "restirdi_commons.glsl"
 
+// Compute shadow ray tmax for the chosen light, handling sphere lights (Alg. 6 Z check)
+float z_shadow_tmax(vec3 shadow_origin, vec3 wi, float wi_len, uint light_idx) {
+    float tmax = wi_len - EPS;
+    if (get_light_type(lights[light_idx].light_flags) == LIGHT_SPHERE) {
+        vec3 oc = shadow_origin - lights[light_idx].pos;
+        float b = dot(oc, wi);
+        float disc = b * b - (dot(oc, oc) - lights[light_idx].world_radius *
+                                             lights[light_idx].world_radius);
+        tmax = max(-b - sqrt(max(disc, 0.0)) - EPS, 0.0);
+    }
+    return tmax;
+}
+
 void main() {
+    const bool unbiased = true;  // toggle: true = Alg.6 Z correction, false = biased W = w_sum/(M*p_hat)
     const float max_r = 30;                    // paper biased variant: 30px radius
     const float depth_threshold = 0.1;         // paper: normalized depth within 10%
     const float angle_threshold = 25 * PI / 180;
-    const float num_neighbor_samples = 5;
+    const int num_neighbor_samples = unbiased ? 3 : 5;        // paper unbiased variant: k=3
     load_g_buffer();
     const float depth_q = length(pos - origin);  // current pixel depth from camera
     const RestirReservoir curr_reservoir = passthrough_reservoirs.d[pixel_idx];
     RestirReservoir r;
     init_reservoir(r);
+
+    // Storage for accepted neighbors (for Z correction)
+    vec3 Q_pos[num_neighbor_samples];
+    vec3 Q_norm[num_neighbor_samples];
+    uint Q_m[num_neighbor_samples];
+    uint q_cnt = 0;
+
     if (curr_reservoir.W != 0) {
         combine_reservoir(r, curr_reservoir);
         uint num_samples = curr_reservoir.m;
@@ -34,7 +55,7 @@ void main() {
                       ivec2(gl_LaunchSizeEXT.xy) - 1);
             const uint neighbor_idx = coords.x * pc.size_y + coords.y;
 
-            // Geometric similarity check (paper biased Alg. 5)
+            // Geometric similarity check (paper Alg. 6)
             const RestirGBufferData neighbor_gb = gbuffer.d[neighbor_idx];
             const float depth_n = length(neighbor_gb.pos - origin);
             if (depth_n == 0.0 || abs(depth_q / depth_n - 1.0) > depth_threshold ||
@@ -45,10 +66,64 @@ void main() {
             const RestirReservoir r_n = passthrough_reservoirs.d[neighbor_idx];
             combine_reservoir(r, r_n);
             num_samples += r_n.m;
+
+            // Store for Z correction
+            Q_pos[q_cnt]  = neighbor_gb.pos;
+            Q_norm[q_cnt] = neighbor_gb.normal;
+            Q_m[q_cnt]    = r_n.m;
+            q_cnt++;
         }
         r.m = num_samples;
-        const float phat = calc_p_hat(r) * r.m;
-        r.W = phat == 0 ? 0 : r.w_sum / phat;
+
+        // Reconstruct chosen light position from r.s (replay seed, same as calc_L)
+        uvec4 chosen_seed = r.s.seed;
+        vec3 chosen_light_pos, chosen_light_n;
+        const vec4 rands_light =
+            vec4(rand(chosen_seed), rand(chosen_seed), rand(chosen_seed), rand(chosen_seed));
+        sample_light_with_idx(rands_light, pos, pc.num_lights, r.s.light_idx,
+                              r.s.light_mesh_idx, chosen_light_pos, chosen_light_n);
+
+        // Unbiased Z correction (Alg. 6): Z = sum of M over reservoirs where
+        // p_hat(chosen sample) > 0 from that pixel's surface position
+        uint Z = 0;
+        const float phat = calc_p_hat(r);
+        if (unbiased && phat > 0) {
+            // Check current pixel
+            {
+                const vec3 o = offset_ray(pos, normal);
+                vec3 wi = chosen_light_pos - pos;
+                const float wi_len = length(wi);
+                wi /= wi_len;
+                if (dot(normal, wi) > 0) {
+                    any_hit_payload.hit = 1;
+                    traceRayEXT(tlas,
+                                gl_RayFlagsTerminateOnFirstHitEXT |
+                                    gl_RayFlagsSkipClosestHitShaderEXT,
+                                0xFF, 1, 0, 1, o, 0, wi,
+                                z_shadow_tmax(o, wi, wi_len, r.s.light_idx), 1);
+                    if (any_hit_payload.hit == 0) Z += curr_reservoir.m;
+                }
+            }
+            // Check each accepted neighbor
+            for (int i = 0; i < q_cnt; i++) {
+                const vec3 o = offset_ray(Q_pos[i], Q_norm[i]);
+                vec3 wi = chosen_light_pos - Q_pos[i];
+                const float wi_len = length(wi);
+                wi /= wi_len;
+                if (dot(Q_norm[i], wi) > 0) {
+                    any_hit_payload.hit = 1;
+                    traceRayEXT(tlas,
+                                gl_RayFlagsTerminateOnFirstHitEXT |
+                                    gl_RayFlagsSkipClosestHitShaderEXT,
+                                0xFF, 1, 0, 1, o, 0, wi,
+                                z_shadow_tmax(o, wi, wi_len, r.s.light_idx), 1);
+                    if (any_hit_payload.hit == 0) Z += Q_m[i];
+                }
+            }
+        }
+
+        r.W = unbiased ? (phat == 0 || Z == 0 ? 0 : r.w_sum / (phat * float(Z)))
+                       : (phat == 0 || r.m == 0 ? 0 : r.w_sum / (phat * float(r.m)));
     }
     spatial_reservoirs.d[pixel_idx].w_sum = r.w_sum;
     spatial_reservoirs.d[pixel_idx].W = r.W;
