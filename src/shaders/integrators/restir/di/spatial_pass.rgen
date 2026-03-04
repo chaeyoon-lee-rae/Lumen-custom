@@ -124,6 +124,11 @@ void main() {
 
         r.W = unbiased ? (phat == 0 || Z == 0 ? 0 : r.w_sum / (phat * float(Z)))
                        : (phat == 0 || r.m == 0 ? 0 : r.w_sum / (phat * float(r.m)));
+
+        if (gl_LaunchIDEXT.x == 0 && gl_LaunchIDEXT.y == 0) {
+            debugPrintfEXT("[SPATIAL] frame=%d w_sum=%.6f phat=%.6e Z=%d num_samples=%d r.W=%.6f\n",
+                pc.frame_num, r.w_sum, phat, Z, r.m, r.W);
+        }
     }
     spatial_reservoirs.d[pixel_idx].w_sum = r.w_sum;
     spatial_reservoirs.d[pixel_idx].W = r.W;

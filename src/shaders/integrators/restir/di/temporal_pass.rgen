@@ -12,21 +12,6 @@
 #include "restirdi_commons.glsl"
 #include "../../pt_commons.glsl"
 
-/*
-
-struct RestirGBufferData {
-	vec3 pos;
-	uint mat_idx;
-	vec3 normal;
-	uint pad;
-	vec2 uv;
-	vec2 pad2;
-	vec3 albedo;
-	uint pad3;
-	vec3 n_g;
-	uint pad4;
-};
-*/
 
 void main() {
     const vec2 pixel = vec2(gl_LaunchIDEXT.xy) + vec2(0.5);
@@ -36,23 +21,6 @@ void main() {
     vec4 target = ubo.inv_projection * vec4(d.x, d.y, 1, 1);
     vec3 direction = vec3(sample_camera(d));
     vec3 throughput = vec3(1);
-
-    /*
-    struct RestirData {
-        uint light_idx;
-        uint light_mesh_idx;
-        uvec4 seed;
-    };
-
-    struct RestirReservoir {
-        float w_sum;
-        float W;
-        uint m;
-        RestirData s;
-        float p_hat;
-        float pdf;
-    };
-    */
 
     RestirReservoir r_new;
     RestirReservoir r_prev;
@@ -65,21 +33,6 @@ void main() {
     r_new.s.seed = seed;
     
     traceRayEXT(tlas, flags, 0xFF, 0, 0, 0, origin, tmin, direction, tmax, 0);
-
-    /*
-    struct HitPayload {
-        vec3 n_g;
-        vec3 n_s;
-        vec3 pos;
-        vec2 uv;
-        uint material_idx;
-        uint triangle_idx;
-        uint instance_idx;
-        float area;
-        float dist;
-        uint hit_kind;
-    };  
-    */
 
     pos = payload.pos;
     uv = payload.uv;
@@ -106,40 +59,16 @@ void main() {
         const uint M = 32;
         const uint light_samples = min(pc.light_triangle_count, 32);
 
-        if (pc.do_spatiotemporal == 1 &&
-            ((hit_mat.bsdf_props & BSDF_FLAG_SPECULAR) == 0)) {
-
-            vec4 prev_pos = ubo.prev_view * vec4(pos, 1);
-            prev_pos /= prev_pos.z;
-            prev_pos = -ubo.prev_projection * prev_pos;
-            ivec2 prev_coords =
-                ivec2(0.5 * (1 + prev_pos.xy) * gl_LaunchSizeEXT.xy);
-            if ((prev_coords.x < gl_LaunchSizeEXT.x && prev_coords.x >= 0) &&
-                (prev_coords.y < gl_LaunchSizeEXT.y && prev_coords.y >= 0)) {
-                r_prev = temporal_reservoirs.d[pixel_idx];
-            }
-        }
-
         for (int i = 0; i < light_samples; i++) {
             const uvec4 light_seed = seed;
             vec3 wi;
             float wi_len;
             float pdf_light;
-            /*
-            struct LightRecord {
-                uint light_idx;
-                uint flags;
-                vec2 bary;
-                uint triangle_idx;
-                uint instance_idx;
-            };
-            */
+
             LightRecord record;
             float cos_from_light;
             vec3 light_pos, light_n;
 
-            // TODO: 실제 sample_light_Li sampling 동작 방법은?
-            // TODO: 광량에 따라서 sampling하고 있는지? 아님 그냥 uniform이던가?
             const vec3 Le = sample_light_Li(
                 rand4(seed), payload.pos, pc.num_lights, wi, wi_len, light_n,
                 light_pos, pdf_light, cos_from_light, record);
@@ -157,10 +86,11 @@ void main() {
             s.light_mesh_idx = record.triangle_idx;
             s.seed = light_seed;
             const float p_hat = length(f * Le * abs(cos_x) * g);
-            update_reservoir(r_new, s, p_hat / pdf_light);  // TODO: pdf_light로 나눠준다고? 논문에서 target distribution이 이렇지 않았던 거 같은데?
+
+            if (p_hat <= 0.0 || pdf_light <= 0.0) continue;
+            update_reservoir(r_new, s, p_hat / pdf_light);
         }
         
-        // TODO: visibility check를 temporal 안에서 하던가? 논문과 비교
         // Visibility check for the selected candidate
         if (r_new.w_sum > 0) {
             vec2 uv_unused;
@@ -172,7 +102,6 @@ void main() {
             const vec4 rands =
                 vec4(rand(r_seed), rand(r_seed), rand(r_seed), rand(r_seed));
 
-            // TODO: 굳이 다시 계산해줘야하나? 최종 선택된 후보 계산했을 때 이미 Le 계산을 했을텐데?
             vec3 Le = sample_light_with_idx(
                 rands, payload.pos, pc.num_lights, light_idx,
                 light_triangle_idx, light_pos, light_n);
@@ -200,23 +129,35 @@ void main() {
             vec3 f = eval_bsdf(hit_mat, wo, wi, normal, 1, side);
             const float cos_x = dot(normal, wi);
             const float g = abs(dot(light_n, -wi)) / (wi_len * wi_len);
-            // TODO: float를 0과 비교하는게 맞음?
-            bool visible = any_hit_payload.hit == 0 && f != vec3(0);    
+            bool visible = any_hit_payload.hit == 0;    
             r_new.W = 0;
             if (visible) {
                 const float p_hat = length(f * Le * abs(cos_x) * g);
-                if (p_hat == 0) {
-                    r_new.W = 0;
-                } else {
+                if (p_hat > 0.0) {
                     r_new.W = r_new.w_sum / (p_hat * r_new.m);
                 }
             }
         }
+
         // Temporal reuse
+        if (pc.do_spatiotemporal == 1 &&
+            ((hit_mat.bsdf_props & BSDF_FLAG_SPECULAR) == 0)) {
+
+            vec4 prev_pos = ubo.prev_view * vec4(pos, 1);
+            prev_pos /= prev_pos.z;
+            prev_pos = -ubo.prev_projection * prev_pos;
+            ivec2 prev_coords =
+                ivec2(0.5 * (1 + prev_pos.xy) * gl_LaunchSizeEXT.xy);
+            if ((prev_coords.x < gl_LaunchSizeEXT.x && prev_coords.x >= 0) &&
+                (prev_coords.y < gl_LaunchSizeEXT.y && prev_coords.y >= 0)) {
+                uint prev_pixel_idx = prev_coords.x * gl_LaunchSizeEXT.y + prev_coords.y;
+                r_prev = temporal_reservoirs.d[prev_pixel_idx];
+            }
+        }
+
         combine_reservoir(r, r_new);
         uint num_samples = r_new.m;
 
-        // TODO: 애초에 ReSTIR 알고리즘이 spatiotemporal을 쓰는 건데 이걸 왜 토글함
         if (pc.do_spatiotemporal == 1) {
             r_prev.m = min(20 * r_new.m, r_prev.m);
             combine_reservoir(r, r_prev);
@@ -224,12 +165,16 @@ void main() {
         }
         r.m = num_samples;
 
+        r.W = 0.0;
         if (r_new.W > 0 || r_prev.W > 0) {
-            const float phat = calc_p_hat(r) * r.m;
-            r.W = phat == 0 ? 0 : r.w_sum / (phat);
-        } else {
-            r.W = 0;
+            const float phat = calc_p_hat(r);
+            r.W = phat > 0.0 ? r.w_sum / (phat * r.m) : 0.0;
         }
+
+        // if (gl_LaunchIDEXT.x == 0 && gl_LaunchIDEXT.y == 0) {
+        //     debugPrintfEXT("[W] frame=%d r_new.W=%.6f r_new.m=%d r_prev.W=%.6f r_prev.m=%d r.W=%.6f r.w_sum=%.6f r.m=%d\n",
+        //         pc.frame_num, r_new.W, r_new.m, r_prev.W, r_prev.m, r.W, r.w_sum, r.m);
+        // }
 
         // Write to g-buffer
         gbuffer.d[pixel_idx].pos = pos;
@@ -239,75 +184,75 @@ void main() {
 
         // Sample direction & update throughput
         vec3 col = hit_mat.emissive_factor;
-        float pdf, cos_theta;
-        vec3 f = sample_bsdf(normal, wo, hit_mat, 1 /*radiance=cam*/, side,
-                             direction, pdf, cos_theta, seed);
-        throughput *= f * abs(cos_theta) / pdf;
-        // TODO: BSDF_FLAG_SPECULAR는 어디서 오는 거임?
-        bool specular = (hit_mat.bsdf_props & BSDF_FLAG_SPECULAR) != 0;
-        origin = offset_ray(pos, n_g);
+        // float pdf, cos_theta;
+        // vec3 f = sample_bsdf(normal, wo, hit_mat, 1 /*radiance=cam*/, side,
+        //                      direction, pdf, cos_theta, seed);
+        // throughput *= f * abs(cos_theta) / pdf;
+        // // TODO: BSDF_FLAG_SPECULAR는 어디서 오는 거임?
+        // bool specular = (hit_mat.bsdf_props & BSDF_FLAG_SPECULAR) != 0;
+        // origin = offset_ray(pos, n_g);
 
-        // TODO: DI에서 pathtracing을 한다? 흠..? 
-        // Do traditional path tracing
-        for (int depth = 1;; depth++) {
-            // NOTE: depth 체크하기 전에 무조건 여기서 ray를 한 번 쏴주기 때문에 cost가 생길 수 밖에 없음
-            traceRayEXT(tlas, flags, 0xFF, 0, 0, 0, origin, tmin, direction,
-                        tmax, 0);
-            const bool found_isect = payload.material_idx != -1;
-            if (depth >= pc.max_depth - 1) {
-                break;
-            }
-            if (!found_isect) {
-                col += throughput * pc.sky_col;
-                break;
-            }
-            const Material hit_mat =
-                load_material(payload.material_idx, payload.uv);
-            if (specular) {
-                col += throughput * hit_mat.emissive_factor;
-            }
-            const vec3 wo = -direction;
-            vec3 n_s = payload.n_s;
-            bool side = true;
-            vec3 n_g = payload.n_g;
-            if (dot(payload.n_g, wo) < 0.)
-                n_g = -n_g;
-            if (dot(n_g, payload.n_s) < 0) {
-                n_s = -n_s;
-                side = false;
-            }
-            float cos_wo = dot(wo, n_s);
-            origin = offset_ray(payload.pos, n_s);
-            if ((hit_mat.bsdf_props & BSDF_FLAG_SPECULAR) == 0) {
-                const float light_pick_pdf = 1. / pc.light_triangle_count;
-                col += throughput *
-                       uniform_sample_light(seed, hit_mat, payload.pos, side, n_s, wo,
-                                            specular) /
-                       light_pick_pdf;
-            }
-            // Sample direction & update throughput
-            float pdf, cos_theta;
-            const vec3 f = sample_bsdf(n_s, wo, hit_mat,
-                                       1
-                                       /*radiance=cam*/,
-                                       side, direction, pdf, cos_theta, seed);
-            if (pdf == 0) {
-                break;
-            }
-            throughput *= f * abs(cos_theta) / pdf;
-            specular = (hit_mat.bsdf_props & BSDF_FLAG_SPECULAR) != 0;
-            float rr_scale = 1.0;
-            if (hit_mat.bsdf_type == BSDF_TYPE_GLASS) {
-                rr_scale *= side ? 1. / hit_mat.ior : hit_mat.ior;
-            }
-            if (depth > RR_MIN_DEPTH) {
-                float rr_prob = min(0.95f, luminance(throughput) * rr_scale);
-                if (rr_prob < rand(seed))
-                    break;
-                else
-                    throughput /= rr_prob;
-            }
-        }
+        // // TODO: DI에서 pathtracing을 한다? 흠..? 
+        // // Do traditional path tracing
+        // for (int depth = 1;; depth++) {
+        //     // NOTE: depth 체크하기 전에 무조건 여기서 ray를 한 번 쏴주기 때문에 cost가 생길 수 밖에 없음
+        //     traceRayEXT(tlas, flags, 0xFF, 0, 0, 0, origin, tmin, direction,
+        //                 tmax, 0);
+        //     const bool found_isect = payload.material_idx != -1;
+        //     if (depth >= pc.max_depth - 1) {
+        //         break;
+        //     }
+        //     if (!found_isect) {
+        //         col += throughput * pc.sky_col;
+        //         break;
+        //     }
+        //     const Material hit_mat =
+        //         load_material(payload.material_idx, payload.uv);
+        //     if (specular) {
+        //         col += throughput * hit_mat.emissive_factor;
+        //     }
+        //     const vec3 wo = -direction;
+        //     vec3 n_s = payload.n_s;
+        //     bool side = true;
+        //     vec3 n_g = payload.n_g;
+        //     if (dot(payload.n_g, wo) < 0.)
+        //         n_g = -n_g;
+        //     if (dot(n_g, payload.n_s) < 0) {
+        //         n_s = -n_s;
+        //         side = false;
+        //     }
+        //     float cos_wo = dot(wo, n_s);
+        //     origin = offset_ray(payload.pos, n_s);
+        //     if ((hit_mat.bsdf_props & BSDF_FLAG_SPECULAR) == 0) {
+        //         const float light_pick_pdf = 1. / pc.light_triangle_count;
+        //         col += throughput *
+        //                uniform_sample_light(seed, hit_mat, payload.pos, side, n_s, wo,
+        //                                     specular) /
+        //                light_pick_pdf;
+        //     }
+        //     // Sample direction & update throughput
+        //     float pdf, cos_theta;
+        //     const vec3 f = sample_bsdf(n_s, wo, hit_mat,
+        //                                1
+        //                                /*radiance=cam*/,
+        //                                side, direction, pdf, cos_theta, seed);
+        //     if (pdf == 0) {
+        //         break;
+        //     }
+        //     throughput *= f * abs(cos_theta) / pdf;
+        //     specular = (hit_mat.bsdf_props & BSDF_FLAG_SPECULAR) != 0;
+        //     float rr_scale = 1.0;
+        //     if (hit_mat.bsdf_type == BSDF_TYPE_GLASS) {
+        //         rr_scale *= side ? 1. / hit_mat.ior : hit_mat.ior;
+        //     }
+        //     if (depth > RR_MIN_DEPTH) {
+        //         float rr_prob = min(0.95f, luminance(throughput) * rr_scale);
+        //         if (rr_prob < rand(seed))
+        //             break;
+        //         else
+        //             throughput /= rr_prob;
+        //     }
+        // }
         tmp_col.d[pixel_idx] = col;
     }
     // Save the reservoirs for spatial reuse

@@ -39,5 +39,5 @@ class ReSTIRDISphere : public Integrator {
 
 	PCReSTIR pc_ray{};
 	bool do_spatiotemporal   = false;   // BIM-matched: reuseSamples → temporal reservoir reuse across frames
-	bool enable_accumulation = true;  // BIM reuseSamples does not use frame color averaging
+	bool enable_accumulation = false;  // BIM reuseSamples does not use frame color averaging
 };
