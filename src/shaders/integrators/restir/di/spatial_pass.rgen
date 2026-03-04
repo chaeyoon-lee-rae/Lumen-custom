@@ -21,7 +21,7 @@ void main() {
     init_reservoir(r);
     if (curr_reservoir.W != 0) {
         combine_reservoir(r, curr_reservoir);
-        uint num_samples = r.m;
+        uint num_samples = curr_reservoir.m;
         for (int i = 0; i < num_neighbor_samples; i++) {
             // Choose a neighbor pixel
             const float randa = rand(seed) * 2 * PI;
