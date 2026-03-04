@@ -374,6 +374,8 @@ void ReSTIRDISphere::render() {
 		.bind_texture_array(lumen_scene->scene_textures)
 		.bind_tlas(tlas);
 
+	if (!do_spatiotemporal)
+		do_spatiotemporal = true;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
