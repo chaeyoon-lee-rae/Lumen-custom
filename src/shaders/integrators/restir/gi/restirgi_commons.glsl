@@ -45,10 +45,17 @@ uint offset(const uint pingpong) {
 
 
 bool similar(ReservoirSample q, ReservoirSample q_n) {
-    const float depth_threshold = 0.5;
+    // FIXED: was mat_idx equality + unused depth_threshold (0.5).
+    // Now normalized depth ratio + normal angle per paper Sec. 4.2.
+    const float depth_threshold = 0.05;
     const float angle_threshold = 25 * PI / 180;
-    if (q.mat_idx != q_n.mat_idx ||
-        dot(q_n.n_v, q.n_v) < cos(angle_threshold)) {
+    const vec3 cam_pos = vec3(ubo.inv_view * vec4(0, 0, 0, 1));
+    const float depth_q = length(q.x_v - cam_pos);
+    const float depth_n = length(q_n.x_v - cam_pos);
+    if (depth_n == 0.0 || abs(depth_q / depth_n - 1.0) > depth_threshold) {
+        return false;
+    }
+    if (dot(q_n.n_v, q.n_v) < cos(angle_threshold)) {
         return false;
     }
     return true;

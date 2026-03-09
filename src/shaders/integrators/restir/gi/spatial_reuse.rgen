@@ -44,17 +44,21 @@ void combine_reservoir(inout Reservoir r1, const Reservoir r2,
     if (!visible) {
         r2_hat = 0;
     } else {
-        // Calculate Jacobian
-        vec3 w_qq = q.x_v - q.x_s;
+        // FIXED: was using q.x_s/q.n_s (current pixel's secondary point) as
+        // Jacobian reference. Correct reference is r2.s.x_s (neighbor's secondary
+        // point) with r2.s.n_s. J = |cosθ_curr|*dist_neigh² / (|cosθ_neigh|*dist_curr²)
+        vec3 w_qq = q.x_v - r2.s.x_s;
         const float w_qq_len = length(w_qq);
         w_qq /= w_qq_len;
-        vec3 w_rq = r2.s.x_v - q.x_s;
+        vec3 w_rq = r2.s.x_v - r2.s.x_s;
         const float w_rq_len = length(w_rq);
         w_rq /= w_rq_len;
         const float qq = w_qq_len * w_qq_len;
         const float rq = w_rq_len * w_rq_len;
-        const float div = rq * abs(dot(w_qq, q.n_s));
-        const float j = div == 0 ? 0 : abs(dot(w_rq, q.n_s)) * qq / div;
+        // FIXED: was computing 1/J (numerator/denominator swapped).
+        // J = |cosθ_q|*dist_n² / (|cosθ_n|*dist_q²) = dω_q/dω_n
+        const float div = qq * abs(dot(w_rq, r2.s.n_s));
+        const float j = div == 0 ? 0 : abs(dot(w_qq, r2.s.n_s)) * rq / div;
         r2_hat *= j;
     }
 
@@ -66,12 +70,19 @@ void combine_reservoir(inout Reservoir r1, const Reservoir r2,
 }
 
 void main() {
-    // TODO: Adaptively change this
     const uint pingpong = (pc.total_frame_num % 2);
-    const float max_r = 10;
-    const float dist_threshold = 0.01;
+    // FIXED: was fixed 10px. Now adaptive: starts at 10% of screen min dimension,
+    // halved on geometric rejection, floored at 3px. (paper Sec. 5)
+    float radius = float(min(pc.size_x, pc.size_y)) * 0.1;
+    const float min_radius = 3.0;
+    // FIXED: was world-space dist²<0.01 (~0.1 units max), which disabled spatial
+    // reuse entirely in large scenes. Now normalized depth ratio (scale-independent).
+    // (paper Sec. 4.2: within 5%)
+    const float depth_threshold = 0.05;
     const float angle_threshold = 25 * PI / 180;
     ReservoirSample q = samples.d[pixel_idx];
+    const vec3 cam_pos = vec3(ubo.inv_view * vec4(0, 0, 0, 1));
+    const float depth_q = length(q.x_v - cam_pos);
     Reservoir r_s;
    
     if (pc.do_spatiotemporal == 1) {
@@ -102,7 +113,7 @@ void main() {
     for (int i = 0; i < max_iter; i++) {
         // Choose a neighbor pixel
         const float randa = rand(seed) * 2 * PI;
-        const float randr = sqrt(rand(seed)) * max_r;
+        const float randr = sqrt(rand(seed)) * radius;
         ivec2 rand_offset =
             ivec2(floor(cos(randa) * randr), floor(sin(randa) * randr));
         const ivec2 coords = clamp(ivec2(gl_LaunchIDEXT.xy) + rand_offset,
@@ -114,38 +125,42 @@ void main() {
             continue;
         }
         // Geometric similarity
-        float dist = dot(q_n.x_v - q.x_v, q_n.x_v - q.x_v);
-        if (dist > dist_threshold ||
-            (dot(q_n.n_v, q.n_v)) < cos(angle_threshold)) {
+        const float depth_n = length(q_n.x_v - cam_pos);
+        if (depth_n == 0.0 || abs(depth_q / depth_n - 1.0) > depth_threshold ||
+            dot(q_n.n_v, q.n_v) < cos(angle_threshold)) {
+            radius = max(radius * 0.5, min_radius);
             continue;
         }
         Reservoir r_n = temp_reservoirs.d[offset(pingpong ^ 1) + coords_idx];
         bool gt;
         combine_reservoir(r, r_n, q, q_n, gt);
-        Q_h[q_cnt] = r_n.m;
-        Q[q_cnt++] = q_n.x_s;
-        sum += r_n.m;
+        // FIXED: was unconditional — factor==0 neighbors (invisible/empty) were
+        // still added to Q[] and sum, inflating Z and r.m. Only count neighbors
+        // that actually contributed to the WRS. (paper Algorithm 4)
+        if (gt) {
+            Q_h[q_cnt] = r_n.m;
+            // FIXED: was q_n.x_s. Z-estimation needs neighbor's x_v (ray origin)                                                                                      
+            // per paper Algorithm 4: shoot from each neighbor's x_v → chosen r.s.x_s.
+            Q[q_cnt++] = q_n.x_v;
+            sum += r_n.m;
+        }
     }
     const float phat_val = p_hat(r.s.L_o);
     if (phat_val > 0) {
         for (int i = 0; i < q_cnt; i++) {
-
-            vec3 dir = Q[i] - r.s.x_v;
+            // FIXED: was `Q[i](=q_n.x_s) - r.s.x_v` with offset_ray(r.s.x_v)
+            // as origin — wrong direction and double-offset on already-offset x_v.
+            // Correct per paper Algorithm 4: from neighbor's x_v toward chosen x_s.
+            // Q[i]=q_n.x_v is already offset_ray'd by restir.rgen, use directly.
+            vec3 dir = r.s.x_s - Q[i];
             float len = length(dir);
             dir /= len;
-            const vec3 o = offset_ray(r.s.x_v, r.s.n_v);
-            const bool mat_transmissive =
-                (r.s.bsdf_props & BSDF_FLAG_TRANSMISSION) == BSDF_FLAG_TRANSMISSION;
-            bool visible = true;
-            if (!mat_transmissive) {
-                any_hit_payload.hit = 1;
-                traceRayEXT(tlas,
-                            gl_RayFlagsTerminateOnFirstHitEXT |
-                                gl_RayFlagsSkipClosestHitShaderEXT,
-                            0xFF, 1, 0, 1, o, 0, dir, len - EPS, 1);
-                visible = any_hit_payload.hit == 0;
-            }
-            if (visible) {
+            any_hit_payload.hit = 1;
+            traceRayEXT(tlas,
+                        gl_RayFlagsTerminateOnFirstHitEXT |
+                            gl_RayFlagsSkipClosestHitShaderEXT,
+                        0xFF, 1, 0, 1, Q[i], 0, dir, len - EPS, 1);
+            if (any_hit_payload.hit == 0) {
                 Z += Q_h[i];
             }
         }
