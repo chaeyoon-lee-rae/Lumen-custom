@@ -92,9 +92,10 @@ void main() {
     }
 
     const uint max_iter = r_s.m < M_MAX / 2 ? 9 : 3;
-    vec3 Q[9] = vec3[9](vec3(0), vec3(0), vec3(0), vec3(0), vec3(0), vec3(0),
-                        vec3(0), vec3(0), vec3(0));
-    uint Q_h[9] = uint[9](0, 0, 0, 0, 0, 0, 0, 0, 0);
+    // +1 slot for r_s
+    vec3 Q[10] = vec3[10](vec3(0), vec3(0), vec3(0), vec3(0), vec3(0), vec3(0),
+                          vec3(0), vec3(0), vec3(0), vec3(0));
+    uint Q_h[10] = uint[10](0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
     uint q_cnt = 0;
 
     Reservoir r;
@@ -103,11 +104,17 @@ void main() {
     r.m = 0;
     const float factor =
         pc.do_spatiotemporal == 0 ? 0 : r_s.m * r_s.W * p_hat(r_s.s.L_o);
+    // FIXED: was Z = r_s.m unconditionally, skipping visibility check for r_s.
+    // r_s.s.x_s may be occluded in current frame → inflated Z → underestimated W → dim.
+    // Now r_s is added to Q[] like any neighbor; Z only increments after ray confirms
+    // r_s.s.x_s is visible from r_s.s.x_v. (paper Algorithm 4)
+    uint Z = 0;
+    uint sum = r_s.m;
     if (factor > 0) {
         update_reservoir(r, r_s.s, factor);
+        Q_h[q_cnt] = r_s.m;
+        Q[q_cnt++] = r_s.s.x_v; // x_v already offset_ray'd by restir.rgen
     }
-    uint Z = r_s.m;
-    uint sum = r_s.m;
     ReservoirSample q_n;
 
     for (int i = 0; i < max_iter; i++) {
