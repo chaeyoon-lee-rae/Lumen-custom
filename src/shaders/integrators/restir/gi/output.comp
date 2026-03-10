@@ -6,7 +6,6 @@
 #extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
 #extension GL_EXT_buffer_reference2 : require
 #extension GL_EXT_shader_atomic_float : require
-#extension GL_KHR_shader_subgroup_arithmetic : enable
 
 #include "restirgi_commons.h"
 #include "../../../utils.glsl"
@@ -19,9 +18,7 @@ layout(buffer_reference, scalar, buffer_reference_align = 4) buffer ColorStorage
 layout(buffer_reference, scalar, buffer_reference_align = 4) buffer RestirSamples { ReservoirSample d[]; };
 layout(buffer_reference, scalar, buffer_reference_align = 4) buffer Reservoirs { Reservoir d[]; };
 
-RestirSamples samples = RestirSamples(scene_desc.restir_samples_addr);
 ColorStorages tmp_col = ColorStorages(scene_desc.color_storage_addr);
-Reservoirs temp_reservoirs = Reservoirs(scene_desc.temporal_reservoir_addr);
 Reservoirs spatial_reservoirs = Reservoirs(scene_desc.spatial_reservoir_addr);
 
 uint offset(const uint pingpong) { return pingpong * pc.size_x * pc.size_y; }

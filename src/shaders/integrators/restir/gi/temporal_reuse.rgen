@@ -23,7 +23,6 @@ Reservoirs spatial_reservoirs = Reservoirs(scene_desc.spatial_reservoir_addr);
 #define tr temp_reservoirs.d[offset(pingpong ^ 1) + pixel_idx]
 void main() {
     const uint pingpong = (pc.total_frame_num % 2);
-    const vec2 pixel = vec2(gl_LaunchIDEXT.xy) + vec2(0.5);
     const ReservoirSample s = samples.d[pixel_idx];
     Reservoir r;
     if (length(s.n_s) == 0) {
