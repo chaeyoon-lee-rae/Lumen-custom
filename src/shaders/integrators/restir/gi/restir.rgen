@@ -59,7 +59,7 @@ void main() {
             if(depth <= 1) {
                 col += t0 * val;
             } else {
-                L_o += t0 * val;
+                L_o += val; // FIXED: t0 already applied by output.comp; do not double-apply
             }
          
             break;
